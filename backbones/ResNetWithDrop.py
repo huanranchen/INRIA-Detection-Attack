@@ -142,7 +142,7 @@ class BasicBlock(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
 
-        out = identity + ShakeDropFunction.apply(out, self.training)
+        out = identity + ShakeDropFunction.apply(out, self.training) #attention !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!modified!!!!!!
         out = self.relu(out)
 
         return out
@@ -200,7 +200,7 @@ class Bottleneck(nn.Module):
         if self.downsample is not None:
             identity = self.downsample(x)
 
-        out = identity + ShakeDropFunction.apply(out, self.training)
+        out = identity + ShakeDropFunction.apply(out, self.training) #attention !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!modified!!!!!!
         out = self.relu(out)
 
         return out

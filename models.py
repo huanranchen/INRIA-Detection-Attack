@@ -1,26 +1,34 @@
 from model.faster_rcnn import FasterRCNN
 import torchvision
 from torchvision.models.feature_extraction import create_feature_extractor, get_graph_node_names
-from torchvision.models.detection.anchor_utils import AnchorGenerator
+from torchvision.models.detection.anchor_utils import AnchorGenerator, DefaultBoxGenerator
 import torch
-from torch import nn
 from tqdm import tqdm
 import os
-from torchvision.models.detection.backbone_utils import BackboneWithFPN, LastLevelMaxPool,_resnet_fpn_extractor,_validate_trainable_layers
+from torchvision.models.detection.backbone_utils import BackboneWithFPN, LastLevelMaxPool, \
+    _resnet_fpn_extractor, _validate_trainable_layers, _validate_trainable_layers
 from torch import distributed as dist
 from torchvision._internally_replaced_utils import load_state_dict_from_url
 from backbones import resnet50
-from torchvision.models.detection._utils import  overwrite_eps
+from torchvision.models.detection._utils import overwrite_eps
 from torchvision.ops import misc as misc_nn_ops
-
-
+import warnings
+from collections import OrderedDict
+from functools import partial
+from typing import Any, Callable, Dict, List, Optional, Union
+from torch import nn, Tensor
+from torchvision.ops.misc import ConvNormActivation
+from torchvision.utils import _log_api_usage_once
+from torchvision.models.detection import _utils as det_utils
+from torchvision.models.detection.ssd import SSD, SSDScoringHead
+from torchvision.models.detection.ssdlite import _normal_init, _mobilenet_extractor, SSDLiteHead
+from backbones import mobilenet_v3_large
 
 model_urls = {
     "fasterrcnn_resnet50_fpn_coco": "https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth",
     "fasterrcnn_mobilenet_v3_large_320_fpn_coco": "https://download.pytorch.org/models/fasterrcnn_mobilenet_v3_large_320_fpn-907ea3f9.pth",
     "fasterrcnn_mobilenet_v3_large_fpn_coco": "https://download.pytorch.org/models/fasterrcnn_mobilenet_v3_large_fpn-fb6a3cc7.pth",
 }
-
 
 
 def reduce_mean(tensor):
@@ -31,10 +39,10 @@ def reduce_mean(tensor):
 
 def faster_rcnn_my_backbone(num_classes=91):
     backbone = torchvision.models.convnext_base(pretrained=False)
-    #print(backbone)
+    # print(backbone)
     # for i in get_graph_node_names(backbone)[0]:
     #     print(i)
-    return_layers = {"features.3.2.add": "0",   # stride 8
+    return_layers = {"features.3.2.add": "0",  # stride 8
                      "features.5.26.add": "1",  # stride 16
                      "features.7.2.add": "2"}  # stride 32
     # 提供给fpn的每个特征层channel
@@ -70,7 +78,7 @@ def faster_rcnn_my_backbone(num_classes=91):
     anchor_sizes = ((64,), (128,), (256,), (512,))
     aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
     anchor_generator = AnchorGenerator(sizes=anchor_sizes,
-                                        aspect_ratios=aspect_ratios)
+                                       aspect_ratios=aspect_ratios)
 
     roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0', '1', '2'],  # 在哪些特征层上进行RoIAlign pooling
                                                     output_size=[7, 7],  # RoIAlign pooling输出特征矩阵尺寸
@@ -87,7 +95,7 @@ def faster_rcnn_my_backbone(num_classes=91):
 def faster_rcnn_resnet50_shakedrop(pretrained=True, progress=True,
                                    num_classes=91, pretrained_backbone=True,
                                    trainable_backbone_layers=None, **kwargs
-):
+                                   ):
     trainable_backbone_layers = _validate_trainable_layers(
         pretrained or pretrained_backbone, trainable_backbone_layers, 5, 3
     )
@@ -106,6 +114,76 @@ def faster_rcnn_resnet50_shakedrop(pretrained=True, progress=True,
     return model
 
 
+def ssdlite320_mobilenet_v3_large_with_shakedrop(
+        pretrained: bool = True,
+        progress: bool = True,
+        num_classes: int = 91,
+        pretrained_backbone: bool = False,
+        trainable_backbone_layers: Optional[int] = None,
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        **kwargs: Any,
+):
+    if "size" in kwargs:
+        warnings.warn("The size of the model is already fixed; ignoring the argument.")
+
+    trainable_backbone_layers = _validate_trainable_layers(
+        pretrained or pretrained_backbone, trainable_backbone_layers, 6, 6
+    )
+
+    if pretrained:
+        pretrained_backbone = False
+
+    # Enable reduced tail if no pretrained backbone is selected. See Table 6 of MobileNetV3 paper.
+    reduce_tail = not pretrained_backbone
+
+    if norm_layer is None:
+        norm_layer = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
+
+    backbone = mobilenet_v3_large(
+        pretrained=pretrained_backbone, progress=progress, norm_layer=norm_layer, reduced_tail=reduce_tail, **kwargs
+    )
+    if not pretrained_backbone:
+        # Change the default initialization scheme if not pretrained
+        _normal_init(backbone)
+    backbone = _mobilenet_extractor(
+        backbone,
+        trainable_backbone_layers,
+        norm_layer,
+    )
+
+    size = (320, 320)
+    anchor_generator = DefaultBoxGenerator([[2, 3] for _ in range(6)], min_ratio=0.2, max_ratio=0.95)
+    out_channels = det_utils.retrieve_out_channels(backbone, size)
+    num_anchors = anchor_generator.num_anchors_per_location()
+    assert len(out_channels) == len(anchor_generator.aspect_ratios)
+
+    defaults = {
+        "score_thresh": 0.001,
+        "nms_thresh": 0.55,
+        "detections_per_img": 300,
+        "topk_candidates": 300,
+        # Rescale the input in a way compatible to the backbone:
+        # The following mean/std rescale the data from [0, 1] to [-1, 1]
+        "image_mean": [0.5, 0.5, 0.5],
+        "image_std": [0.5, 0.5, 0.5],
+    }
+    kwargs = {**defaults, **kwargs}
+    model = SSD(
+        backbone,
+        anchor_generator,
+        size,
+        num_classes,
+        head=SSDLiteHead(out_channels, num_anchors, num_classes, norm_layer),
+        **kwargs,
+    )
+
+    if pretrained:
+        weights_name = "ssdlite320_mobilenet_v3_large_coco"
+        if model_urls.get(weights_name, None) is None:
+            raise ValueError(f"No checkpoint is available for model {weights_name}")
+        state_dict = load_state_dict_from_url(model_urls[weights_name], progress=progress)
+        model.load_state_dict(state_dict)
+    return model
 
 
 def training_detectors(loader, model: nn.Module,

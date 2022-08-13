@@ -57,11 +57,12 @@ class GetPatchLoss():
         pbar = self.loader
         for step, image in enumerate(pbar):
             image = image.to(self.device)
-            predictions,_ = self.model(image)
+            predictions, _ = self.model(image)
             if len(predictions) == 0:
                 continue
 
             # interpolate the patch into images
+
             for i, pred in enumerate(predictions):
                 scores = pred["scores"]
                 mask = scores > 0.5
@@ -78,6 +79,7 @@ class GetPatchLoss():
                         image[i, :, bx1:bx2, by1:by2] = now
                     except:
                         print(image.shape, now.shape)
+
             # image[:, :, :patch_size[1], :patch_size[2]] = adv_x
 
             predictions, grads = self.model(image)
@@ -95,7 +97,7 @@ class GetPatchLoss():
             if step + 1 >= total_step:
                 return result / total_step
 
-        return result / (step + 1)
+        return result / len(self.loader)
 
 
 class TestAttackAcc():
@@ -111,7 +113,7 @@ class TestAttackAcc():
         pbar = self.loader
         for step, image in enumerate(pbar):
             image = image.to(self.device)
-            predictions,_ = self.model(image)
+            predictions, _ = self.model(image)
             if len(predictions) == 0:
                 continue
 
@@ -136,7 +138,7 @@ class TestAttackAcc():
                         print(image.shape, now.shape)
             # image[:, :, :patch_size[1], :patch_size[2]] = adv_x
 
-            predictions,_ = self.model(image)
+            predictions, _ = self.model(image)
 
             # from VisualizeDetection import visualizaion
             # from utils import tensor2cv2image

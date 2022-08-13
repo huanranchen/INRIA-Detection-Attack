@@ -54,12 +54,12 @@ def attack_detection(x: torch.tensor, model: nn.Module, attack_step=10) -> torch
 
 def patch_attack_detection(model: nn.Module,
                            loader: DataLoader,
-                           attack_epoch=1000,
+                           attack_epoch=100000,
                            attack_step=10000,
                            patch_size=(3, 128, 128),
                            m=0.9,
                            use_sign=True,
-                           lr=5e-3,
+                           lr=5e-2,
                            aug_image=False,
                            fp_16=False) -> torch.tensor:
     '''
@@ -98,10 +98,10 @@ def patch_attack_detection(model: nn.Module,
                     image = image.to(device)
                     if aug_image:
                         image = transform(image)
-                    predictions,_ = model(image)
+                    predictions, _ = model(image)
                     if len(predictions) == 0:
                         continue
-    
+
                 # interpolate the patch into images
                 for i, pred in enumerate(predictions):
                     scores = pred["scores"]
@@ -119,19 +119,19 @@ def patch_attack_detection(model: nn.Module,
                             image[i, :, bx1:bx2, by1:by2] = now
                         except:
                             print(image.shape, now.shape)
-    
+
                 if not fp_16:
                     predictions, grads = model(image)
                     if len(predictions) == 0:
                         continue
                     scores = []
                     for grad in grads:
-                        mask = grad>0.5
+                        mask = grad > 0.5
                         scores.append(grad[mask])
                     scores = torch.cat(scores, dim=0)
                     loss = criterion(scores)
                     loss.backward()
-    
+
                 grad = adv_x.grad.clone()
                 adv_x.requires_grad = False
                 if use_sign:
@@ -144,7 +144,7 @@ def patch_attack_detection(model: nn.Module,
                 # optimizer.step()
                 total_loss += loss.item()
                 if step % 10 == 0:
-                    pbar.set_postfix_str(f'loss={total_loss / (step + 1)/5}')
+                    pbar.set_postfix_str(f'loss={total_loss / (step + 1) / 5}')
                     if step >= attack_step:
                         torch.save(adv_x, 'patch.pth')
                         adv_x = tensor2cv2image(adv_x.detach().cpu())
@@ -154,7 +154,126 @@ def patch_attack_detection(model: nn.Module,
                         torch.save(adv_x, 'patch.pth')
                         img_x = tensor2cv2image(adv_x.detach().clone())
                         cv2.imwrite('patch.jpg', img_x)
-        print(epoch, total_loss / len(loader)/5)
+        print(epoch, total_loss / len(loader) / 5)
+
+    torch.save(adv_x, 'patch.pth')
+
+    adv_x = tensor2cv2image(adv_x.detach())
+    cv2.imwrite('patch.jpg', adv_x)
+
+    visualizaion([predictions[0]], tensor2cv2image(image[0].detach()))
+    import time
+    time.sleep(2)
+    return adv_x
+
+
+def patch_attack_classification_in_detection(model: nn.Module,
+                                             loader: DataLoader,
+                                             attack_epoch=100000,
+                                             attack_step=10000,
+                                             patch_size=(3, 128, 128),
+                                             m=0.9,
+                                             use_sign=True,
+                                             lr=5e-2,
+                                             aug_image=False,
+                                             fp_16=False) -> torch.tensor:
+    '''
+    use nesterov
+    :param x:image
+    :param model: detection model, whose output is pytorch detection style
+    :return:
+    '''
+    global transform
+    for s in model.modules():
+        s.requires_grad_(False)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if aug_image:
+        transform = transforms.Compose([
+            transforms.RandomHorizontalFlip().to(device),
+            transforms.ColorJitter(0.1, 0.1, 0.1, 0.1).to(device),
+        ])
+    if os.path.exists('patch.pth'):
+        adv_x = torch.load('patch.pth')
+    else:
+        adv_x = torch.clamp(torch.randn(patch_size) / 2 + 1, 0, 1)
+    adv_x.requires_grad = True
+    momentum = 0
+    # optimizer = torch.optim.SGD([adv_x], lr=1e-2)
+    criterion = lambda x: F.mse_loss(x, torch.zeros_like(x))
+
+    for epoch in range(1, attack_epoch + 1):
+        total_loss = 0
+        pbar = tqdm(loader)
+        loader.sampler.set_epoch(epoch)
+        for step, image in enumerate(pbar):
+            original_image = copy.deepcopy(image)
+            for i in range(5):
+                image = copy.deepcopy(original_image)
+                with torch.no_grad():
+                    image = image.to(device)
+                    if aug_image:
+                        image = transform(image)
+                    predictions = model(image)
+                    if len(predictions) == 0:
+                        continue
+
+                # interpolate the patch into images
+                for i, pred in enumerate(predictions):
+                    scores = pred["scores"]
+                    mask = scores > 0.3
+                    boxes = pred["boxes"][mask]
+                    for now_box_idx in range(boxes.shape[0]):
+                        now_box = boxes[now_box_idx]
+                        by1, bx1, by2, bx2 = scale_bbox(*tuple(now_box.detach().cpu().numpy().tolist()))
+                        if not assert_bbox(bx1, by1, bx2, by2):
+                            continue
+                        now = F.interpolate(adv_x.unsqueeze(0),
+                                            size=get_size_of_bbox(bx1, by1, bx2, by2),
+                                            mode='bilinear')
+                        try:
+                            image[i, :, bx1:bx2, by1:by2] = now
+                        except:
+                            print(image.shape, now.shape)
+
+                if not fp_16:
+                    predictions = model(image)
+                    if len(predictions) == 0:
+                        continue
+                    final_scores = []
+                    for pred in predictions:
+                        scores = pred["scores"]
+                        mask = scores > 0.3
+                        scores = scores[mask]
+                        final_scores.append(scores)
+                    if len(final_scores) == 0:
+                        continue
+                    scores = torch.cat(final_scores, dim=0)
+                    loss = criterion(scores)
+                    loss.backward()
+
+                grad = adv_x.grad.clone()
+                adv_x.requires_grad = False
+                if use_sign:
+                    adv_x = clamp(adv_x - lr * grad.sign())
+                else:
+                    momentum = m * momentum - grad
+                    adv_x += lr * (-grad + m * momentum)
+                    adv_x = clamp(adv_x)
+                adv_x.requires_grad = True
+                # optimizer.step()
+                total_loss += loss.item()
+                if step % 10 == 0:
+                    pbar.set_postfix_str(f'loss={total_loss / (step + 1) / 5}')
+                    if step >= attack_step:
+                        torch.save(adv_x, 'patch.pth')
+                        adv_x = tensor2cv2image(adv_x.detach().cpu())
+                        cv2.imwrite('patch.jpg', adv_x)
+                        return adv_x
+                    if step % 10 == 0:
+                        torch.save(adv_x, 'patch.pth')
+                        img_x = tensor2cv2image(adv_x.detach().clone())
+                        cv2.imwrite('patch.jpg', img_x)
+        print(epoch, total_loss / len(loader) / 5)
 
     torch.save(adv_x, 'patch.pth')
 
@@ -342,8 +461,11 @@ class AttackWithPerturbedNeuralNetwork():
         self.model = model
         self.loader = loader
         self.original_model = copy.deepcopy(model)
-        self.modes = ['random', 'gradient']
+        self.modes = ['random', 'gradient', 'ground_truth_gradient']
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    def synthesize_ground_truth(self):
+        self.ground_truth = None
 
     def patch_attack_detection(self,
                                attack_epoch=1000,
@@ -351,12 +473,12 @@ class AttackWithPerturbedNeuralNetwork():
                                patch_size=(3, 100, 100),
                                m=0.9,
                                use_sign=True,
-                               lr=5e-3,
+                               lr=5e-2,
                                aug_image=False,
                                fp_16=False,
-                               mode='gradient',
+                               mode='ground_truth_gradient',
                                perturb_frequency=2,
-                               reset_frequency=200) -> torch.tensor:
+                               reset_frequency=20) -> torch.tensor:
         """
 
         :param attack_epoch:
@@ -377,8 +499,9 @@ class AttackWithPerturbedNeuralNetwork():
             for s in self.model.modules():
                 s.requires_grad_(False)
         elif mode == 'gradient':
-            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-5, momentum=0.9, nesterov=True,
-                                             maximize=True)
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-5, momentum=0.9, nesterov=True, )
+        elif mode == 'ground_truth_gradient':
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-5, momentum=0.9, nesterov=True, )
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if aug_image:
@@ -394,7 +517,7 @@ class AttackWithPerturbedNeuralNetwork():
         adv_x.requires_grad = True
         momentum = 0
         criterion = lambda x: F.mse_loss(x, torch.zeros_like(x))
-        step=1
+        step = 1
         for epoch in range(1, attack_epoch + 1):
             total_loss = 0
             self.loader.sampler.set_epoch(epoch)
@@ -404,7 +527,7 @@ class AttackWithPerturbedNeuralNetwork():
                     image = image.to(device)
                     if aug_image:
                         image = transform(image)
-                    predictions,_ = self.model(image)
+                    predictions, _ = self.model(image)
                     if len(predictions) == 0:
                         continue
 
@@ -425,8 +548,6 @@ class AttackWithPerturbedNeuralNetwork():
                             image[i, :, bx1:bx2, by1:by2] = now
                         except:
                             print(image.shape, now.shape)
-                            
-
 
                 if not fp_16:
                     predictions, grads = self.model(image)
@@ -434,7 +555,7 @@ class AttackWithPerturbedNeuralNetwork():
                         continue
                     scores = []
                     for grad in grads:
-                        mask = grad>0.5
+                        mask = grad > 0.5
                         scores.append(grad[mask])
                     scores = torch.cat(scores, dim=0)
                     loss = criterion(scores)
@@ -470,7 +591,7 @@ class AttackWithPerturbedNeuralNetwork():
                     if step % reset_frequency == 0:
                         self.model = copy.deepcopy(self.original_model)
                 step += 1
-            #print(epoch, total_loss / len(self.loader))
+            # print(epoch, total_loss / len(self.loader))
 
         torch.save(adv_x, 'patch.pth')
 

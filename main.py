@@ -2,10 +2,10 @@ import torch
 import torchvision
 from skimage.io import imread
 from VisualizeDetection import visualizaion
-from torchvision.models.detection import ssd300_vgg16
+from torchvision.models.detection import ssdlite320_mobilenet_v3_large
 from model.faster_rcnn import fasterrcnn_resnet50_fpn
 from Attack import attack_detection, patch_attack_detection, SAM_patch_attack_detection, \
-    AttackWithPerturbedNeuralNetwork
+    AttackWithPerturbedNeuralNetwork, patch_attack_classification_in_detection
 from utils import *
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -28,16 +28,16 @@ from data.data import get_loader
 
 
 def attack():
-    model = fasterrcnn_resnet50_fpn(pretrained=True).to(device)
+    model = ssdlite320_mobilenet_v3_large(pretrained=True).to(device)
     #model = faster_rcnn_resnet50_shakedrop()
     model.eval().to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank,
                                                       find_unused_parameters=True)
     loader = get_loader(train_path="/home/chenhuanran/data/INRIATrain/pos/", batch_size=8)
-    #patch_attack_detection(model, loader, attack_epoch=10000, attack_step=999999999)
+    patch_attack_classification_in_detection(model, loader, attack_epoch=10000, attack_step=999999999)
     # SAM_patch_attack_detection(model, loader, attack_epoch=3, attack_step=999999999)
-    w = AttackWithPerturbedNeuralNetwork(model, loader)
-    w.patch_attack_detection()
+    #w = AttackWithPerturbedNeuralNetwork(model, loader)
+    #w.patch_attack_detection()
     # w.test_perturb_strength()
     #w.adversarial_training_patch()
 
@@ -77,7 +77,7 @@ def draw_multi_model_2d():
                                                       find_unused_parameters=True)
     draw_2d(train_path, model)
 
-    model = ssd300_vgg16(pretrained=True).to(device)
+    model = ssdlite320_mobilenet_v3_large(pretrained=True).to(device)
     model.eval().to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank,
                                                       find_unused_parameters=True)
@@ -99,6 +99,10 @@ def temp_draw():
                                                       find_unused_parameters=True)
     draw_2d(train_path, model, patch = patch_PGD, coordinate=coordinate)
 
+
+    train_path = "/home/chenhuanran/data/INRIATrain/pos/"
+    draw_2d(train_path, model, patch=patch_PGD, coordinate=coordinate)
+    plt.legend(['test', 'train'])
     plt.savefig('landscape.jpg')
 
 

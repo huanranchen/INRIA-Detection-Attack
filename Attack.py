@@ -174,7 +174,7 @@ def patch_attack_classification_in_detection(model: nn.Module,
                                              patch_size=(3, 128, 128),
                                              m=0.9,
                                              use_sign=True,
-                                             lr=5e-2,
+                                             lr=5e-3,
                                              aug_image=False,
                                              fp_16=False) -> torch.tensor:
     '''
@@ -193,9 +193,9 @@ def patch_attack_classification_in_detection(model: nn.Module,
             transforms.ColorJitter(0.1, 0.1, 0.1, 0.1).to(device),
         ])
     if os.path.exists('patch.pth'):
-        adv_x = torch.load('patch.pth')
+        adv_x = torch.load('patch.pth').detach().to(device)
     else:
-        adv_x = torch.clamp(torch.randn(patch_size) / 2 + 1, 0, 1)
+        adv_x = torch.clamp(torch.randn(patch_size) / 2 + 1, 0, 1).to(device)
     adv_x.requires_grad = True
     momentum = 0
     # optimizer = torch.optim.SGD([adv_x], lr=1e-2)
@@ -252,6 +252,7 @@ def patch_attack_classification_in_detection(model: nn.Module,
                     loss.backward()
 
                 grad = adv_x.grad.clone()
+                grad = reduce_mean(grad)
                 adv_x.requires_grad = False
                 if use_sign:
                     adv_x = clamp(adv_x - lr * grad.sign())
@@ -261,7 +262,7 @@ def patch_attack_classification_in_detection(model: nn.Module,
                     adv_x = clamp(adv_x)
                 adv_x.requires_grad = True
                 # optimizer.step()
-                total_loss += loss.item()
+                total_loss += reduce_mean(loss).item()
                 if step % 10 == 0:
                     pbar.set_postfix_str(f'loss={total_loss / (step + 1) / 5}')
                     if step >= attack_step:

@@ -9,7 +9,7 @@ from torchvision._internally_replaced_utils import load_state_dict_from_url
 from torchvision.ops.misc import ConvNormActivation, SqueezeExcitation as SElayer
 from torchvision.models._utils import _make_divisible
 from torchvision.utils import _log_api_usage_once
-from ShakeDrop import ShakeDropFunction
+from .ShakeDrop import ShakeDropFunction
 
 __all__ = ["MobileNetV3", "mobilenet_v3_large", "mobilenet_v3_small"]
 

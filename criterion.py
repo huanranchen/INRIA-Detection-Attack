@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from utils import *
 import torch.distributed as dist
+from VisualizeDetection import visualizaion
 
 
 def reduce_mean(tensor):
@@ -69,7 +70,8 @@ class GetPatchLoss():
                 boxes = pred["boxes"][mask]
                 for now_box_idx in range(boxes.shape[0]):
                     now_box = boxes[now_box_idx]
-                    by1, bx1, by2, bx2 = scale_bbox(*tuple(now_box.detach().cpu().numpy().tolist()))
+                    by1, bx1, by2, bx2 = scale_bbox_keep_patch_ratio(*tuple(now_box.detach().cpu().numpy().tolist()),
+                                                                     patch=adv_x)
                     if not assert_bbox(bx1, by1, bx2, by2):
                         continue
                     now = F.interpolate(adv_x.unsqueeze(0),
@@ -121,24 +123,27 @@ class TestAttackAcc():
             # interpolate the patch into images
             for i, pred in enumerate(predictions):
                 scores = pred["scores"]
-                mask = scores > 0.5
+                mask = scores > 0.3
                 boxes = pred["boxes"][mask]
                 num_bbox_before_attack += torch.sum(mask).item()
                 for now_box_idx in range(boxes.shape[0]):
                     now_box = boxes[now_box_idx]
-                    by1, bx1, by2, bx2 = scale_bbox(*tuple(now_box.detach().cpu().numpy().tolist()))
+                    by1, bx1, by2, bx2 = scale_bbox_keep_patch_ratio(*tuple(now_box.detach().cpu().numpy().tolist()),
+                                                                     patch=adv_x)
                     if not assert_bbox(bx1, by1, bx2, by2):
                         continue
                     now = F.interpolate(adv_x.unsqueeze(0),
                                         size=get_size_of_bbox(bx1, by1, bx2, by2),
                                         mode='bilinear')
+                    #image[i, :, bx1:bx2, by1:by2] = now
                     try:
                         image[i, :, bx1:bx2, by1:by2] = now
                     except:
-                        print(image.shape, now.shape)
-            # image[:, :, :patch_size[1], :patch_size[2]] = adv_x
+                        print(bx1, by1, bx2, by2, now.shape, image[i, :, bx1:bx2, by1:by2].shape)
 
             predictions, _ = self.model(image)
+            if num_bbox_before_attack == 0:
+                continue
 
             # from VisualizeDetection import visualizaion
             # from utils import tensor2cv2image
@@ -152,14 +157,14 @@ class TestAttackAcc():
             else:
                 for pred in predictions:
                     scores = pred["scores"]
-                    mask = scores > 0.5
+                    mask = scores > 0.3
                     num_bbox_after_attack += torch.sum(mask).item()
             this_step_attack_acc = 1 - num_bbox_after_attack / num_bbox_before_attack
             result += this_step_attack_acc
             if step + 1 >= total_step:
                 return result / total_step
 
-        return result / (step + 1)
+        return result / len(self.loader)
 
     def __call__(self, *args, **kwargs):
         return self.test_accuracy(*args, **kwargs)

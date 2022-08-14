@@ -1,8 +1,9 @@
+import numpy as np
 import torch
 import torchvision
 from skimage.io import imread
 from VisualizeDetection import visualizaion
-from torchvision.models.detection import ssdlite320_mobilenet_v3_large
+from models import ssdlite320_mobilenet_v3_large_with_shakedrop
 from model.faster_rcnn import fasterrcnn_resnet50_fpn
 from Attack import attack_detection, patch_attack_detection, SAM_patch_attack_detection, \
     AttackWithPerturbedNeuralNetwork, patch_attack_classification_in_detection
@@ -14,6 +15,10 @@ import os
 import argparse
 from criterion import TestAttackAcc
 from models import faster_rcnn_resnet50_shakedrop
+from Draws.DrawUtils.D2Landscape import D2Landscape
+from criterion import GetPatchLoss
+from tqdm import tqdm
+from torchvision.models.detection import ssdlite320_mobilenet_v3_large
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--local_rank", default=os.getenv('LOCAL_RANK', -1), type=int)
@@ -28,24 +33,23 @@ from data.data import get_loader
 
 
 def attack():
-    model = ssdlite320_mobilenet_v3_large(pretrained=True).to(device)
-    #model = faster_rcnn_resnet50_shakedrop()
+    model = ssdlite320_mobilenet_v3_large_with_shakedrop(pretrained=True).to(device)
+    # model = faster_rcnn_resnet50_shakedrop()
     model.eval().to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank,
                                                       find_unused_parameters=True)
-    loader = get_loader(train_path="/home/chenhuanran/data/INRIATrain/pos/", batch_size=8)
+    loader = get_loader(train_path="/home/chenhuanran/data/INRIATrain/pos/", batch_size=16)
     patch_attack_classification_in_detection(model, loader, attack_epoch=10000, attack_step=999999999)
     # SAM_patch_attack_detection(model, loader, attack_epoch=3, attack_step=999999999)
-    #w = AttackWithPerturbedNeuralNetwork(model, loader)
-    #w.patch_attack_detection()
+    # w = AttackWithPerturbedNeuralNetwork(model, loader)
+    # w.patch_attack_detection()
     # w.test_perturb_strength()
-    #w.adversarial_training_patch()
+    # w.adversarial_training_patch()
 
 
-def draw_2d(dataset_path, model, coordinate = None, patch = None):
+def draw_2d(dataset_path, model, coordinate=None, patch=None):
     loader = get_loader(dataset_path)
-    from Draws.DrawUtils.D2Landscape import D2Landscape
-    from criterion import GetPatchLoss
+
     if patch is None:
         patch = torch.load('patch.pth').to(device)
     loss = GetPatchLoss(model, loader)
@@ -85,20 +89,20 @@ def draw_multi_model_2d():
     plt.legend(['faster rcnn', 'ssd'])
     plt.savefig('landscape.jpg')
 
+
 def temp_draw():
     train_path = "/home/chenhuanran/data/INRIATest/"
     patch_ensemble = torch.load('patch_ensemble.pth').to(device).detach()
     patch_PGD = torch.load('patch_PGD.pth').to(device).detach()
     coordinate = patch_ensemble - patch_PGD
-    coordinate = (coordinate, coordinate) # this is a bug
+    coordinate = (coordinate, coordinate)  # this is a bug
 
     model = fasterrcnn_resnet50_fpn(pretrained=True).to(device)
     model.eval().to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank],
                                                       output_device=local_rank,
                                                       find_unused_parameters=True)
-    draw_2d(train_path, model, patch = patch_PGD, coordinate=coordinate)
-
+    draw_2d(train_path, model, patch=patch_PGD, coordinate=coordinate)
 
     train_path = "/home/chenhuanran/data/INRIATrain/pos/"
     draw_2d(train_path, model, patch=patch_PGD, coordinate=coordinate)
@@ -113,7 +117,7 @@ def test_accuracy():
     '''
     train_path = "/home/chenziyan/work/data/INRIAPerson/Test/pos/"
     model = fasterrcnn_resnet50_fpn(pretrained=True).to(device)
-    #model = torchvision.models.detection.ssd300_vgg16(pretrained=True).to(device)
+    # model = torchvision.models.detection.ssd300_vgg16(pretrained=True).to(device)
     model.eval().to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank,
                                                       find_unused_parameters=True)
@@ -123,7 +127,30 @@ def test_accuracy():
     print(w.test_accuracy(patch, total_step=100))
 
 
-temp_draw()
+def draw_loss_of_scale():
+    model = fasterrcnn_resnet50_fpn(pretrained=True)
+    model.eval().to(device)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank],
+                                                      output_device=local_rank,
+                                                      find_unused_parameters=True)
+    loader = get_loader(train_path="/home/chenhuanran/data/INRIATest/", batch_size=8)
+    losser = TestAttackAcc(model, loader)
+
+    patch = torch.load('patch.pth').cuda()
+    aspect_ratios = np.arange(0.1, 1.1, 0.1)
+    loss = []
+
+    for i in tqdm(range(aspect_ratios.shape[0])):
+        aspect_ratio = aspect_ratios[i]
+        now_patch = resize_patch_by_aspect_ratio(patch, aspect_ratio)
+        loss.append(losser(now_patch))
+
+    loss = np.array(loss)
+    plt.plot(aspect_ratios, loss)
+    plt.savefig('aspect_ratio.jpg')
+
+
+attack()
 
 # image = imread('1.jpg')
 # x = image_array2tensor(np.array(image))

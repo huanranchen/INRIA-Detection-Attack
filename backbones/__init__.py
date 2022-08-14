@@ -16,5 +16,4 @@ __all__ = [
     "wide_resnet50_2",
     "wide_resnet101_2",
     "MobileNetV3", "mobilenet_v3_large", "mobilenet_v3_small",
-
 ]

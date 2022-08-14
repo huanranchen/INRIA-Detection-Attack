@@ -300,7 +300,7 @@ model_urls = {
 }
 
 
-def fasterrcnn_resnet50_fpn(pretrained=False, progress=True,
+def fasterrcnn_resnet50_fpn(pretrained=True, progress=True,
                             num_classes=91, pretrained_backbone=True, trainable_backbone_layers=None, **kwargs):
     """
     Constructs a Faster R-CNN model with a ResNet-50-FPN backbone.

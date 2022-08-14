@@ -9,7 +9,7 @@ from torchvision.models.detection.backbone_utils import BackboneWithFPN, LastLev
     _resnet_fpn_extractor, _validate_trainable_layers, _validate_trainable_layers
 from torch import distributed as dist
 from torchvision._internally_replaced_utils import load_state_dict_from_url
-from backbones import resnet50
+from backbones import resnet50, mobilenet_v3_large
 from torchvision.models.detection._utils import overwrite_eps
 from torchvision.ops import misc as misc_nn_ops
 import warnings
@@ -22,12 +22,13 @@ from torchvision.utils import _log_api_usage_once
 from torchvision.models.detection import _utils as det_utils
 from torchvision.models.detection.ssd import SSD, SSDScoringHead
 from torchvision.models.detection.ssdlite import _normal_init, _mobilenet_extractor, SSDLiteHead
-from backbones import mobilenet_v3_large
 
 model_urls = {
     "fasterrcnn_resnet50_fpn_coco": "https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth",
     "fasterrcnn_mobilenet_v3_large_320_fpn_coco": "https://download.pytorch.org/models/fasterrcnn_mobilenet_v3_large_320_fpn-907ea3f9.pth",
     "fasterrcnn_mobilenet_v3_large_fpn_coco": "https://download.pytorch.org/models/fasterrcnn_mobilenet_v3_large_fpn-fb6a3cc7.pth",
+    "ssdlite320_mobilenet_v3_large_coco": "https://download.pytorch.org/models/ssdlite320_mobilenet_v3_large_coco-a79551df.pth",
+
 }
 
 

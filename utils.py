@@ -110,3 +110,4 @@ def resize_patch_by_aspect_ratio(patch, aspect_ratio):
     width /= math.sqrt(aspect_ratio)
     resizer = transforms.Resize((int(length), int(width)))
     return resizer(patch)
+

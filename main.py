@@ -42,9 +42,7 @@ def attack():
     patch_attack_classification_in_detection(model, loader, attack_epoch=10000, attack_step=999999999)
     # SAM_patch_attack_detection(model, loader, attack_epoch=3, attack_step=999999999)
     # w = AttackWithPerturbedNeuralNetwork(model, loader)
-    # w.patch_attack_detection()
     # w.test_perturb_strength()
-    # w.adversarial_training_patch()
 
 
 def draw_2d(dataset_path, model, coordinate=None, patch=None):
@@ -90,7 +88,7 @@ def draw_multi_model_2d():
     plt.savefig('landscape.jpg')
 
 
-def temp_draw():
+def draw_by_given_direction():
     train_path = "/home/chenhuanran/data/INRIATest/"
     patch_ensemble = torch.load('patch_ensemble.pth').to(device).detach()
     patch_PGD = torch.load('patch_PGD.pth').to(device).detach()
@@ -127,7 +125,7 @@ def test_accuracy():
     print(w.test_accuracy(patch, total_step=100))
 
 
-def draw_loss_of_scale():
+def draw_loss_of_scale(patch):
     model = fasterrcnn_resnet50_fpn(pretrained=True)
     model.eval().to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank],
@@ -136,8 +134,7 @@ def draw_loss_of_scale():
     loader = get_loader(train_path="/home/chenhuanran/data/INRIATest/", batch_size=8)
     losser = TestAttackAcc(model, loader)
 
-    patch = torch.load('patch.pth').cuda()
-    aspect_ratios = np.arange(0.1, 1.1, 0.1)
+    aspect_ratios = np.arange(0.2, 1.1, 0.1)
     loss = []
 
     for i in tqdm(range(aspect_ratios.shape[0])):
@@ -147,10 +144,22 @@ def draw_loss_of_scale():
 
     loss = np.array(loss)
     plt.plot(aspect_ratios, loss)
-    plt.savefig('aspect_ratio.jpg')
 
 
-attack()
+def draw_all_picture_of_aspect_ratio(path='./aug/'):
+    legends = []
+    for root, _, files in os.walk(path):
+        for file in files:
+            if file.endswith('.png'):
+                patch = imread(os.path.join(root, file))
+                patch = image_array2tensor(patch).cuda().squeeze()
+                draw_loss_of_scale(patch)
+                legends.append(file[:-4])
+    plt.legend(legends)
+    plt.savefig('aspect_ratios')
+
+
+draw_all_picture_of_aspect_ratio()
 
 # image = imread('1.jpg')
 # x = image_array2tensor(np.array(image))

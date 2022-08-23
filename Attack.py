@@ -13,6 +13,7 @@ import torch.distributed as dist
 from torchvision import transforms
 from torch.cuda.amp import autocast, GradScaler
 import time
+from augments import mixup
 
 
 def reduce_mean(tensor):
@@ -167,6 +168,125 @@ def patch_attack_detection(model: nn.Module,
     return adv_x
 
 
+def patch_attack_detection_strong_augment(model: nn.Module,
+                                          loader: DataLoader,
+                                          attack_epoch=100000,
+                                          attack_step=10000,
+                                          patch_size=(3, 128, 128),
+                                          m=0.9,
+                                          use_sign=True,
+                                          lr=5e-3,
+                                          fp_16=False) -> torch.tensor:
+    '''
+    use nesterov
+    :param x:image
+    :param model: detection model, whose output is pytorch detection style
+    :return:
+    '''
+    global transform
+    for s in model.modules():
+        s.requires_grad_(False)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if os.path.exists('patch.pth'):
+        adv_x = torch.load('patch.pth').detach().to(device)
+    else:
+        adv_x = torch.clamp(torch.randn(patch_size) / 2 + 1, 0, 1).detach().to(device)
+    adv_x.requires_grad = True
+    momentum = 0
+    # optimizer = torch.optim.SGD([adv_x], lr=1e-2)
+    criterion = lambda x: F.mse_loss(x, torch.zeros_like(x))
+
+    for epoch in range(1, attack_epoch + 1):
+        total_loss = 0
+        pbar = tqdm(loader)
+        loader.sampler.set_epoch(epoch)
+        for step, image in enumerate(pbar):
+            original_image = copy.deepcopy(image).to(device)
+            # original_image.requires_grad = True
+            for i in range(5):
+                image = original_image.clone()
+                image = mixup(image)
+                with torch.no_grad():
+                    image = image.to(device)
+                    predictions, _ = model(image)
+                    if len(predictions) == 0:
+                        continue
+
+                # interpolate the patch into images
+                for i, pred in enumerate(predictions):
+                    scores = pred["scores"]
+                    mask = scores > 0.3
+                    boxes = pred["boxes"][mask]
+                    for now_box_idx in range(boxes.shape[0]):
+                        now_box = boxes[now_box_idx]
+                        by1, bx1, by2, bx2 = scale_bbox(*tuple(now_box.detach().cpu().numpy().tolist()))
+                        if not assert_bbox(bx1, by1, bx2, by2):
+                            continue
+                        now = F.interpolate(adv_x.unsqueeze(0),
+                                            size=get_size_of_bbox(bx1, by1, bx2, by2),
+                                            mode='bilinear')
+                        try:
+                            image[i, :, bx1:bx2, by1:by2] = now
+                        except:
+                            print(image.shape, now.shape)
+
+                if not fp_16:
+                    predictions, grads = model(image)
+                    if len(predictions) == 0:
+                        continue
+                    scores = []
+                    for grad in grads:
+                        mask = grad > 0.5
+                        scores.append(grad[mask])
+                    scores = torch.cat(scores, dim=0)
+                    loss = criterion(scores)
+                    loss.backward()
+
+                # update patch
+                grad = adv_x.grad.clone()
+                grad = reduce_mean(grad)
+                adv_x.requires_grad = False
+                if use_sign:
+                    adv_x = clamp(adv_x - lr * grad.sign())
+                else:
+                    momentum = m * momentum - grad
+                    adv_x += lr * (-grad + m * momentum)
+                    adv_x = clamp(adv_x)
+                adv_x.requires_grad = True
+
+                # # update image
+                # grad = original_image.grad.clone()
+                # grad = reduce_mean(grad)
+                # original_image.requires_grad = False
+                # original_image += (1e-3 * grad)
+                # original_image.requires_grad = True
+                #visualizaion([predictions[0]], tensor2cv2image(image[0].detach()))
+
+                total_loss += loss.item()
+                if step % 10 == 0:
+                    pbar.set_postfix_str(f'loss={total_loss / (step + 1) / 5}')
+                    if step >= attack_step:
+                        torch.save(adv_x, 'patch.pth')
+                        adv_x = tensor2cv2image(adv_x.detach().cpu())
+                        cv2.imwrite('patch.jpg', adv_x)
+                        return adv_x
+                    if step % 10 == 0:
+                        torch.save(adv_x, 'patch.pth')
+                        img_x = tensor2cv2image(adv_x.detach().clone())
+                        cv2.imwrite('patch.jpg', img_x)
+        print(epoch, total_loss / len(loader) / 5)
+
+    torch.save(adv_x, 'patch.pth')
+
+    adv_x = tensor2cv2image(adv_x.detach())
+    cv2.imwrite('patch.jpg', adv_x)
+
+    visualizaion([predictions[0]], tensor2cv2image(image[0].detach()))
+    import time
+    time.sleep(2)
+    return adv_x
+
+
 def patch_attack_classification_in_detection(model: nn.Module,
                                              loader: DataLoader,
                                              attack_epoch=100000,
@@ -286,6 +406,7 @@ def patch_attack_classification_in_detection(model: nn.Module,
     time.sleep(2)
     return adv_x
 
+
 @torch.no_grad()
 def patch_attack_detection_and_visualize(model: nn.Module,
                                          loader: DataLoader,
@@ -351,6 +472,7 @@ def patch_attack_detection_and_visualize(model: nn.Module,
     import time
     time.sleep(2)
     return
+
 
 def SAM_patch_attack_detection(model: nn.Module,
                                loader: DataLoader,

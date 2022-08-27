@@ -41,7 +41,7 @@ def attack():
                                                       find_unused_parameters=True)
     loader = get_loader(train_path="/home/chenhuanran/data/INRIATrain/pos/", batch_size=8)
     #patch_attack_classification_in_detection(model, loader, attack_epoch=10000, attack_step=999999999)
-    patch_attack_detection_strong_augment(model, loader, attack_epoch=10000, attack_step=999999999)
+    patch_attack_detection(model, loader, attack_epoch=10000, attack_step=999999999)
     # SAM_patch_attack_detection(model, loader, attack_epoch=3, attack_step=999999999)
     # w = AttackWithPerturbedNeuralNetwork(model, loader)
     # w.test_perturb_strength()

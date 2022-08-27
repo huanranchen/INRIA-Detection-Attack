@@ -111,3 +111,9 @@ def resize_patch_by_aspect_ratio(patch, aspect_ratio):
     resizer = transforms.Resize((int(length), int(width)))
     return resizer(patch)
 
+
+def get_k_max(x: torch.tensor, k: int = 10):
+    x = x.reshape(-1)
+    x, _ = torch.sort(x, dim=0, descending=True)
+    x = x[:k]
+    return x

@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils import scale_bbox, get_size_of_bbox, assert_bbox, tensor2cv2image, clamp
 from VisualizeDetection import visualizaion
-from utils import tensor2cv2image
+from utils import *
 import torch.distributed as dist
 from torchvision import transforms
 from torch.cuda.amp import autocast, GradScaler
@@ -60,13 +60,15 @@ def patch_attack_detection(model: nn.Module,
                            patch_size=(3, 128, 128),
                            m=0.9,
                            use_sign=True,
-                           lr=5e-2,
+                           lr=5e-3,
                            aug_image=False,
-                           fp_16=False) -> torch.tensor:
+                           fp_16=False,
+                           aug_patch=False) -> torch.tensor:
     '''
     use nesterov
     :param x:image
     :param model: detection model, whose output is pytorch detection style
+    :param aug_image
     :return:
     '''
     global transform
@@ -77,6 +79,12 @@ def patch_attack_detection(model: nn.Module,
         transform = transforms.Compose([
             transforms.RandomHorizontalFlip().to(device),
             transforms.ColorJitter(0.1, 0.1, 0.1, 0.1).to(device),
+        ])
+    if aug_patch:
+        patch_transform = transforms.Compose([
+            transforms.RandomRotation(degrees=10),
+            transforms.ColorJitter(0.1, 0.1, 0.1),
+            # transforms.RandomResizedCrop
         ])
     if os.path.exists('patch.pth'):
         adv_x = torch.load('patch.pth')
@@ -113,9 +121,14 @@ def patch_attack_detection(model: nn.Module,
                         by1, bx1, by2, bx2 = scale_bbox(*tuple(now_box.detach().cpu().numpy().tolist()))
                         if not assert_bbox(bx1, by1, bx2, by2):
                             continue
-                        now = F.interpolate(adv_x.unsqueeze(0),
-                                            size=get_size_of_bbox(bx1, by1, bx2, by2),
-                                            mode='bilinear')
+                        if aug_patch:
+                            now = F.interpolate(patch_transform(adv_x).unsqueeze(0),
+                                                size=get_size_of_bbox(bx1, by1, bx2, by2),
+                                                mode='bilinear')
+                        else:
+                            now = F.interpolate(adv_x.unsqueeze(0),
+                                                size=get_size_of_bbox(bx1, by1, bx2, by2),
+                                                mode='bilinear')
                         try:
                             image[i, :, bx1:bx2, by1:by2] = now
                         except:
@@ -130,6 +143,7 @@ def patch_attack_detection(model: nn.Module,
                         mask = grad > 0.5
                         scores.append(grad[mask])
                     scores = torch.cat(scores, dim=0)
+                    scores = get_k_max(scores)
                     loss = criterion(scores)
                     loss.backward()
 
@@ -260,7 +274,7 @@ def patch_attack_detection_strong_augment(model: nn.Module,
                 # original_image.requires_grad = False
                 # original_image += (1e-3 * grad)
                 # original_image.requires_grad = True
-                #visualizaion([predictions[0]], tensor2cv2image(image[0].detach()))
+                # visualizaion([predictions[0]], tensor2cv2image(image[0].detach()))
 
                 total_loss += loss.item()
                 if step % 10 == 0:

@@ -7,7 +7,7 @@ from utils import image_array2tensor, tensor2cv2image
 
 @torch.no_grad()
 def demo():
-    model = fasterrcnn_resnet50_fpn(pretrained=True).eval()
+    model = ssdlite320_mobilenet_v3_large(pretrained=True).eval()
 
     # Capture OBS Virtual Camera
     cap = cv2.VideoCapture(0)

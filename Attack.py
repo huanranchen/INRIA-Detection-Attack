@@ -26,7 +26,7 @@ def attack_detection(x: torch.tensor, model: nn.Module, attack_step=10) -> torch
     '''
     Not patch attack. Only detection attack
     :param x:
-    :param model: detection model, whose output is pytorch detection style
+    :param model: detection detectors, whose output is pytorch detection style
     :return:
     '''
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -63,11 +63,11 @@ def patch_attack_detection(model: nn.Module,
                            lr=5e-3,
                            aug_image=False,
                            fp_16=False,
-                           aug_patch=False) -> torch.tensor:
+                           aug_patch=True) -> torch.tensor:
     '''
     use nesterov
     :param x:image
-    :param model: detection model, whose output is pytorch detection style
+    :param model: detection detectors, whose output is pytorch detection style
     :param aug_image
     :return:
     '''
@@ -194,7 +194,7 @@ def patch_attack_detection_strong_augment(model: nn.Module,
     '''
     use nesterov
     :param x:image
-    :param model: detection model, whose output is pytorch detection style
+    :param model: detection detectors, whose output is pytorch detection style
     :return:
     '''
     global transform
@@ -314,7 +314,7 @@ def patch_attack_classification_in_detection(model: nn.Module,
     '''
     use nesterov
     :param x:image
-    :param model: detection model, whose output is pytorch detection style
+    :param model: detection detectors, whose output is pytorch detection style
     :return:
     '''
     global transform
@@ -432,7 +432,7 @@ def patch_attack_detection_and_visualize(model: nn.Module,
     '''
     use nesterov
     :param x:image
-    :param model: detection model, whose output is pytorch detection style
+    :param model: detection detectors, whose output is pytorch detection style
     :return:
     '''
     global transform
@@ -501,7 +501,7 @@ def SAM_patch_attack_detection(model: nn.Module,
     '''
     use nesterov
     :param x:image
-    :param model: detection model, whose output is pytorch detection style
+    :param model: detection detectors, whose output is pytorch detection style
     :return:
     '''
     for s in model.modules():
@@ -907,7 +907,7 @@ class PatchAttackDownsampleByNeuralNetWork():
         '''
         use nesterov
         :param x:image
-        :param model: detection model, whose output is pytorch detection style
+        :param detectors: detection detectors, whose output is pytorch detection style
         :return:
         '''
         scaler = GradScaler()

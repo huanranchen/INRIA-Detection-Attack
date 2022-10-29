@@ -143,7 +143,7 @@ def train_valid_2dlandscape():
 @torch.no_grad()
 def multi_model_3dlandscape():
     '''
-    通过传入多个config file来实现multi model
+    通过传入多个config file来实现multi detectors
     '''
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--patch', type=str, default='None')
@@ -186,7 +186,7 @@ def multi_image_contourf(num_image=3):
 @torch.no_grad()
 def multi_model_contourf():
     '''
-    通过传入多个config file来实现multi model
+    通过传入多个config file来实现multi detectors
     '''
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--patch', type=str, default='None')

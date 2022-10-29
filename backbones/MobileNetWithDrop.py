@@ -277,7 +277,7 @@ def _mobilenet_v3_conf(
         ]
         last_channel = adjust_channels(1024 // reduce_divider)  # C5
     else:
-        raise ValueError(f"Unsupported model type {arch}")
+        raise ValueError(f"Unsupported detectors type {arch}")
 
     return inverted_residual_setting, last_channel
 
@@ -293,7 +293,7 @@ def _mobilenet_v3(
     model = MobileNetV3(inverted_residual_setting, last_channel, **kwargs)
     if pretrained:
         if model_urls.get(arch, None) is None:
-            raise ValueError(f"No checkpoint is available for model type {arch}")
+            raise ValueError(f"No checkpoint is available for detectors type {arch}")
         state_dict = load_state_dict_from_url(model_urls[arch], progress=progress)
         model.load_state_dict(state_dict)
     return model
@@ -305,7 +305,7 @@ def mobilenet_v3_large(pretrained: bool = False, progress: bool = True, **kwargs
     `"Searching for MobileNetV3" <https://arxiv.org/abs/1905.02244>`_.
 
     Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        pretrained (bool): If True, returns a detectors pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     arch = "mobilenet_v3_large"
@@ -319,7 +319,7 @@ def mobilenet_v3_small(pretrained: bool = False, progress: bool = True, **kwargs
     `"Searching for MobileNetV3" <https://arxiv.org/abs/1905.02244>`_.
 
     Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        pretrained (bool): If True, returns a detectors pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     arch = "mobilenet_v3_small"

@@ -1,5 +1,8 @@
 import cv2
+import torch
+import torch
 from utils import get_datetime_str
+from torch import nn
 
 coco_labels_name = ["unlabeled", "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
                     "boat",
@@ -25,7 +28,7 @@ def visualizaion(predictions, src_img):
     for x in range(len(predictions)):
         pred = predictions[x]
         scores = pred["scores"]
-        mask = scores > 0.7  # 只取scores值大于0.5的部分
+        mask = scores > 0.5  # 只取scores值大于0.5的部分
 
         boxes = pred["boxes"][mask].cpu().int().detach().numpy()  # [x1, y1, x2, y2]
         labels = pred["labels"][mask].cpu()
@@ -35,9 +38,10 @@ def visualizaion(predictions, src_img):
         img = src_img.copy()
 
         for idx in range(len(boxes)):
-            cv2.rectangle(img, (boxes[idx][0], boxes[idx][1]), (boxes[idx][2], boxes[idx][3]), (255, 0, 0))
+            cv2.rectangle(img, (boxes[idx][0], boxes[idx][1]), (boxes[idx][2], boxes[idx][3]), (255, 0, 0),
+                          thickness=10)
             cv2.putText(img, coco_labels_name[labels[idx]] + " " + str(scores[idx].detach().numpy()),
-                        (boxes[idx][0] + 10, boxes[idx][1] + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                        (boxes[idx][0] + 1, boxes[idx][1] + 1), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 5)
 
         # cv2.imshow("image", img)
         # cv2.waitKey(100000)
@@ -48,7 +52,7 @@ def visualizaion_but_show(predictions, src_img):
     for x in range(len(predictions)):
         pred = predictions[x]
         scores = pred["scores"]
-        mask = scores > 0.7  # 只取scores值大于0.5的部分
+        mask = scores > 0.5  # 只取scores值大于0.5的部分
 
         boxes = pred["boxes"][mask].cpu().int().detach().numpy()  # [x1, y1, x2, y2]
         labels = pred["labels"][mask].cpu()
@@ -64,4 +68,7 @@ def visualizaion_but_show(predictions, src_img):
 
         cv2.imshow("image", img)
         # cv2.waitKey(100000)
-        #cv2.imwrite(get_datetime_str() + '.jpg', img)
+        # cv2.imwrite(get_datetime_str() + '.jpg', img)
+
+
+

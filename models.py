@@ -1,26 +1,22 @@
-from model.faster_rcnn import FasterRCNN
+from detectors import FasterRCNN
 import torchvision
-from torchvision.models.feature_extraction import create_feature_extractor, get_graph_node_names
+from torchvision.models.feature_extraction import create_feature_extractor
 from torchvision.models.detection.anchor_utils import AnchorGenerator, DefaultBoxGenerator
 import torch
 from tqdm import tqdm
-import os
 from torchvision.models.detection.backbone_utils import BackboneWithFPN, LastLevelMaxPool, \
-    _resnet_fpn_extractor, _validate_trainable_layers, _validate_trainable_layers
+    _resnet_fpn_extractor, _validate_trainable_layers
 from torch import distributed as dist
 from torchvision._internally_replaced_utils import load_state_dict_from_url
 from backbones import resnet50, mobilenet_v3_large
 from torchvision.models.detection._utils import overwrite_eps
 from torchvision.ops import misc as misc_nn_ops
 import warnings
-from collections import OrderedDict
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Union
-from torch import nn, Tensor
-from torchvision.ops.misc import ConvNormActivation
-from torchvision.utils import _log_api_usage_once
+from typing import Any, Callable, Optional
+from torch import nn
 from torchvision.models.detection import _utils as det_utils
-from torchvision.models.detection.ssd import SSD, SSDScoringHead
+from torchvision.models.detection.ssd import SSD
 from torchvision.models.detection.ssdlite import _normal_init, _mobilenet_extractor, SSDLiteHead
 
 model_urls = {
@@ -125,7 +121,7 @@ def ssdlite320_mobilenet_v3_large_with_shakedrop(
         **kwargs: Any,
 ):
     if "size" in kwargs:
-        warnings.warn("The size of the model is already fixed; ignoring the argument.")
+        warnings.warn("The size of the detectors is already fixed; ignoring the argument.")
 
     trainable_backbone_layers = _validate_trainable_layers(
         pretrained or pretrained_backbone, trainable_backbone_layers, 6, 6
@@ -181,7 +177,7 @@ def ssdlite320_mobilenet_v3_large_with_shakedrop(
     if pretrained:
         weights_name = "ssdlite320_mobilenet_v3_large_coco"
         if model_urls.get(weights_name, None) is None:
-            raise ValueError(f"No checkpoint is available for model {weights_name}")
+            raise ValueError(f"No checkpoint is available for detectors {weights_name}")
         state_dict = load_state_dict_from_url(model_urls[weights_name], progress=progress)
         model.load_state_dict(state_dict)
     return model
@@ -227,12 +223,12 @@ if __name__ == '__main__':
     #
     # device = torch.device("cuda", local_rank)
     # loader = get_coco_loader(batch_size=2)
-    # model = faster_rcnn_my_backbone().to(device)
-    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank],
+    # detectors = faster_rcnn_my_backbone().to(device)
+    # detectors = torch.nn.parallel.DistributedDataParallel(detectors, device_ids=[local_rank],
     #                                                   output_device=local_rank, find_unused_parameters=True)
     # if os.path.exists('detector.ckpt'):
-    #     model.load_state_dict(torch.load('detector.ckpt'))
-    #     print('using loaded model')
+    #     detectors.load_state_dict(torch.load('detector.ckpt'))
+    #     print('using loaded detectors')
     #
-    # training_detectors(loader, model, total_epoch=3, lr=lr)
+    # training_detectors(loader, detectors, total_epoch=3, lr=lr)
     faster_rcnn_resnet50_shakedrop()

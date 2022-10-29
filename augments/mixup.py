@@ -3,7 +3,7 @@ import numpy as np
 
 
 @torch.no_grad()
-def mixup(x: torch.tensor,  cutmix_prob: int = 0.5, beta: int = 0.3) -> torch.tensor:
+def mixup(x: torch.tensor,  cutmix_prob: int = 0.5, beta: int = 10) -> torch.tensor:
     if np.random.rand() > cutmix_prob:
         return x
     N, _, H, W = x.shape

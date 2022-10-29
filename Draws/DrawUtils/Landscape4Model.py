@@ -15,7 +15,7 @@ class Landscape4Model():
         '''
 
         :param model:
-        :param loss: given a model, return loss
+        :param loss: given a detectors, return loss
         '''
         assert mode in modes
         self.mode = mode
